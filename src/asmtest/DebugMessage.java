@@ -6,6 +6,7 @@
 package asmtest;
 
 import java.awt.Graphics;
+import java.util.HashMap;
 import javax.swing.JTextPane;
 import javax.swing.text.AttributeSet;
 
@@ -24,17 +25,67 @@ public class DebugMessage {
     
     private static final String newLine = System.getProperty("line.separator");
 
-    private JTextPane    debugTextPane;
-    private ElapsedTimer elapsedTimer;
-
-    DebugMessage (JTextPane textPane, ElapsedTimer elapsed) {
-        debugTextPane = textPane;
-        elapsedTimer  = elapsed;
-    }
+    private final JTextPane    debugTextPane;
+    private long  startTime;
+    private final boolean showHours;
+    private final boolean showType;
+    private final HashMap<String, FontInfo> messageTypeTbl;
 
     DebugMessage (JTextPane textPane) {
         debugTextPane = textPane;
-        elapsedTimer  = null;
+        startTime = System.currentTimeMillis(); // get the start time
+        showHours = false;
+        showType = false;
+        messageTypeTbl = new HashMap<>();
+    }
+    
+    /**
+     * returns the elapsed time in seconds.
+     * The format of the String is: "HH:MM:SS"
+     * 
+     * @return a String of the formatted time
+     */
+    private String getElapsedTime () {
+        // get the elapsed time in secs
+        long currentTime = System.currentTimeMillis();
+        long elapsedTime = currentTime - startTime;
+        if (elapsedTime < 0)
+            elapsedTime = 0;
+        
+        // split value into hours, min and secs
+        Long msecs = elapsedTime % 1000;
+        Long secs = (elapsedTime / 1000);
+        Long hours = 0L;
+        secs += msecs >= 500 ? 1 : 0;
+        if (showHours) {
+            hours = secs / 3600;
+        }
+        secs %= 3600;
+        Long mins = secs / 60;
+        secs %= 60;
+
+        // now stringify it
+        String elapsed = "";
+        if (showHours) {
+            if (hours < 10)   elapsed = "0";
+            elapsed += hours.toString();
+            elapsed += ":";
+        }
+        elapsed += (mins < 10) ? "0" + mins.toString() : mins.toString();
+        elapsed += ":";
+        elapsed += (secs < 10) ? "0" + secs.toString() : secs.toString();
+        return elapsed;
+    }
+
+    /**
+     * sets the specified input string to a fixed length all uppercase version
+     * 
+     * @param value - the string value
+     * @return the properly formatted version
+     */
+    private String formatStringLength (String value) {
+        value += "     ";
+        return value.substring(0, 5).toUpperCase();
     }
     
     /**
@@ -74,6 +125,73 @@ public class DebugMessage {
     }
 
     /**
+     * resets the start time
+     */
+    public void resetTime() {
+        startTime = System.currentTimeMillis(); // get the start time
+    }
+    
+    /**
+     * clears the display.
+     */
+    public void clear() {
+        debugTextPane.setText("");
+    }
+
+    /**
+     * updates the display immediately
+     */
+    public void updateDisplay () {
+        Graphics graphics = debugTextPane.getGraphics();
+        if (graphics != null)
+            debugTextPane.update(graphics);
+    }
+    
+    /**
+     * sets the association between a type of message and the characteristics
+     * in which to print the message.
+     * 
+     * @param type  - the type to associate with the font characteristics
+     * @param color - the color to assign to the type
+     * @param font  - the font attributes to associate with the type
+     */
+    public void setTypeColor (String type, Util.TextColor color, Util.FontType font) {
+        // limit the type to a 5-char length (pad with spaces if necessary)
+        type = formatStringLength(type);
+        
+        FontInfo fontinfo = new FontInfo(color, font);
+        if (messageTypeTbl.containsKey(type))
+            messageTypeTbl.replace(type, fontinfo);
+        else
+            messageTypeTbl.put(type, fontinfo);
+    }
+    
+    /**
+     * displays a message in the debug window (no termination).
+     * 
+     * @param type  - the type of message to display
+     * @param message - message contents to display
+     */
+    public void printRaw(String type, String message) {
+        if (message != null && !message.isEmpty()) {
+            // limit the type to a 5-char length (pad with spaces if necessary)
+            type = formatStringLength(type);
+        
+            // get the color and font for the specified type
+            // (if not found, use default values)
+            Util.TextColor color = Util.TextColor.Black;
+            Util.FontType ftype = Util.FontType.Bold;
+            FontInfo fontinfo = messageTypeTbl.get(type);
+            if (fontinfo != null) {
+                color = fontinfo.color;
+                ftype = fontinfo.fonttype;
+            }
+
+            appendToPane(message, color, "Courier", 11, ftype);
+        }
+    }
+
+    /**
      * outputs the various types of messages to the status display.
      * all messages will guarantee the previous line was terminated with a newline,
      * and will preceed the message with a timestamp value and terminate with a newline.
@@ -81,79 +199,23 @@ public class DebugMessage {
      * @param type    - the type of message
      * @param message - the message to display
      */
-    public void print(StatusType type, String message) {
+    public void print(String type, String message) {
         // skip if no message
         if (message == null || message.isEmpty())
             return;
         
-        // show the timestamp if one is assigned
-        if (elapsedTimer != null) {
-            String tstamp = "[" + elapsedTimer.getElapsed() + "] ";
-            appendToPane(tstamp, Util.TextColor.Brown, Util.FontType.Bold);
-        }
-
-        // add termination to message
-        message += newLine;
+        // limit the type to a 5-char length (pad with spaces if necessary)
+        type = formatStringLength(type);
         
-        switch (type) {
-            // the following preceed the message with a timestamp and terminate with a newline
-            case EntryExit:
-                appendToPane(message, Util.TextColor.Brown, Util.FontType.Normal);
-                break;
+        // display the timestamp and message as a prefix to the line
+        String tstamp = "[" + getElapsedTime() + "] ";
+        appendToPane(tstamp, Util.TextColor.Brown, Util.FontType.Bold);
 
-            case Field:
-                int offset = message.lastIndexOf(" ");
-                if (offset > 0) {
-                    String datatype = message.substring(0, offset);
-                    String param = message.substring(offset);
-                    appendToPane(datatype, Util.TextColor.Gold,  Util.FontType.Italic);
-                    appendToPane(param,    Util.TextColor.Green, Util.FontType.Normal);
-                }
-                else {
-                    appendToPane(message, Util.TextColor.Green, Util.FontType.Normal);
-                }
-                break;
-
-            case Method:
-                int offset1 = message.indexOf("(");
-                int offset2 = message.indexOf(")");
-                if (offset1 > 0 && offset2 > 0) {
-                    String method = message.substring(0, offset1);
-                    String param  = message.substring(offset1+1, offset2);
-                    String retval = message.substring(offset2+1);
-                    appendToPane(method, Util.TextColor.Blue,  Util.FontType.Normal);
-                    appendToPane("(",    Util.TextColor.Black, Util.FontType.Normal);
-                    appendToPane(param,  Util.TextColor.Gold,  Util.FontType.Italic);
-                    appendToPane(")",    Util.TextColor.Black, Util.FontType.Normal);
-                    appendToPane(retval, Util.TextColor.DkVio, Util.FontType.Italic);
-                }
-                else {
-                    appendToPane(message, Util.TextColor.Blue, Util.FontType.Normal);
-                }
-                break;
-
-            case Event:
-                appendToPane(message, Util.TextColor.Gold, Util.FontType.Normal);
-                break;
-
-            default:    // fall through...
-            case Info:
-                appendToPane(message, Util.TextColor.Black, Util.FontType.Normal);
-                break;
-
-            case Error:
-                appendToPane("ERROR: " + message, Util.TextColor.Red, Util.FontType.Bold);
-                break;
-
-            case Warning:
-                appendToPane("WARNING: " + message, Util.TextColor.LtRed, Util.FontType.Bold);
-                break;
-        }
-
-        // force an update
-        Graphics graphics = debugTextPane.getGraphics();
-        if (graphics != null)
-            debugTextPane.update(graphics);
+        // now print the message with a terminator
+        if (showType)
+            printRaw(type, type + ": " + message + newLine);
+        else
+            printRaw(type, message + newLine);
     }
 
     /**
@@ -205,9 +267,27 @@ public class DebugMessage {
     }
     
     /**
-     * clears the status display.
+     * a simple test of the colors
      */
-    public void clear() {
-        debugTextPane.setText("");
+    public void testColors () {
+        appendToPane("-----------------------------------------" + newLine, Util.TextColor.Black, Util.FontType.Normal);
+        for (Util.TextColor color : Util.TextColor.values()) {
+            appendToPane("This is a sample of the color: " + color + newLine, color, Util.FontType.Bold);
+        }
+        appendToPane("-----------------------------------------" + newLine, Util.TextColor.Black, Util.FontType.Normal);
+    }
+    
+    public class FontInfo {
+        Util.TextColor  color;      // the font color
+        Util.FontType   fonttype;   // the font attributes (e.g. Italics, Bold,..)
+        String          font;       // the font family (e.g. Courier)
+        int             size;       // the font size
+        
+        FontInfo (Util.TextColor col, Util.FontType type) {
+            color = col;
+            fonttype = type;
+            font = "Courier";
+            size = 11;
+        }
     }
 }

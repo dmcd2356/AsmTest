@@ -10,7 +10,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
-import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.zip.ZipEntry;
@@ -25,7 +24,6 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import static org.objectweb.asm.Opcodes.ASM4;
-import org.objectweb.asm.util.CheckClassAdapter;
 import org.objectweb.asm.util.TraceClassVisitor;
 
 /**
@@ -34,28 +32,97 @@ import org.objectweb.asm.util.TraceClassVisitor;
  */
 public class AsmMainFrame extends javax.swing.JFrame {
 
+    // specifies the debug message types (and, hence, the associated text color)
+    public enum DebugType {
+        Error, Warning, Success, Info, Entry, Exit, Field, Method;
+    }
+    
     /**
      * Creates new form AsmMainFrame
      */
     public AsmMainFrame() {
         initComponents();
-
-        // init selections
-        jarFile = null;
-
-        // init jar file selection directory to location of this project
-        this.classFileChooser.setCurrentDirectory(new File(System.getProperty("user.dir")));
         
         // setup output panel for writing to
         output = new DebugMessage(this.outputTextPane);
+        setDebugColorScheme(output);
+
+        // init default selections
+        jarFile = null;
+        this.classFileChooser.setCurrentDirectory(new File(System.getProperty("user.dir")));
+
+        properties = new PropertiesFile(output);
+        if (properties != null) {
+            // get the previous jar file and class selection if found
+            String jarfilename = properties.getPropertiesItem(PropertiesFile.Type.JarFile);
+            String classname   = properties.getPropertiesItem(PropertiesFile.Type.Class);
+            
+            jarFile = new File(jarfilename);
+            if (!jarFile.isFile())
+                jarFile = null;
+            else {
+                // set the jar file selection
+                this.jarSelectTextField.setText(jarFile.getAbsolutePath());
+                // set the default dir for the jar selection
+                String jarpath = jarfilename.substring(0, jarfilename.lastIndexOf('/'));
+                this.classFileChooser.setCurrentDirectory(new File(jarpath));
+                // setup the class list selection
+                setupClassList(jarFile);
+                // set the class selection (if found)
+                this.classComboBox.setSelectedItem(classname);
+            }
+        }
     }
 
+    /**
+     * converts the DebugType to the corresponding String key value for DebugMessage.print.
+     * Note that ErrorExit and EntryExit are not listed because they are turned into
+     * the other types when sending to print.
+     * 
+     * @param type - the DebugType value to convert
+     * @return the corresponding string entry
+     */
+    private String getDebugTypeString (DebugType type) {
+        switch (type) {
+            case Error :    return "ERROR";
+            case Warning :  return "WARN ";
+            case Success :  return "PASS ";
+            default :
+            case Info :     return "DEBUG";
+            case Entry :    return "ENTRY";
+            case Exit :     return "EXIT ";
+            case Field :    return "FIELD";
+            case Method :   return "METH ";
+        }
+    }
+    
+    /**
+     * sets up the DebugMessage instance with the color selections to use.
+     * 
+     * @param handler - the DebugMessage instance to apply it to
+     */
+//        Error, Warning, Success, Info, Entry, Exit, Field, Method;
+    private void setDebugColorScheme (DebugMessage handler) {
+        handler.setTypeColor (getDebugTypeString(DebugType.Error),   asmtest.Util.TextColor.Red,   asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Warning), asmtest.Util.TextColor.DkRed, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Success), asmtest.Util.TextColor.Green, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Info),    asmtest.Util.TextColor.Black, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Entry),   asmtest.Util.TextColor.Brown, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Exit),    asmtest.Util.TextColor.Brown, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Field),   asmtest.Util.TextColor.Gold,  asmtest.Util.FontType.BoldItalic);
+        handler.setTypeColor (getDebugTypeString(DebugType.Method),  asmtest.Util.TextColor.Blue,  asmtest.Util.FontType.Bold);
+    }
+    
+    private void debugprint(DebugType type, String message) {
+        output.print(getDebugTypeString(type), message);
+    }
+    
     /**
      * finds the classes in a jar file & sets the Class ComboBox to these values.
      * 
      * @param jarFile - the jar file to examine
      */
-    public void setupClassList (File jarFile) {
+    private void setupClassList (File jarFile) {
         if (jarFile == null)
             return;
 
@@ -67,7 +134,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
         try {
             zip = new ZipInputStream(jarFile.toURI().toURL().openStream());
         } catch (IOException ex) {
-            output.print(DebugMessage.StatusType.Error, ex.getMessage());
+            debugprint(DebugType.Error, ex.getMessage());
             return;
         }
         while (true) {
@@ -86,7 +153,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
                     }
                 }
             } catch (IOException ex) {
-                output.print(DebugMessage.StatusType.Error, ex.getMessage());
+                debugprint(DebugType.Error, ex.getMessage());
                 break;
             }
         }
@@ -95,7 +162,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
         try {
             zip.close();
         } catch (IOException ex) {
-            output.print(DebugMessage.StatusType.Error, ex.getMessage());
+            debugprint(DebugType.Error, ex.getMessage());
         }
                 
         // set the 1st entry as the default selection
@@ -110,7 +177,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
         
         @Override
         public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-            output.print(DebugMessage.StatusType.EntryExit, name + " extends " + superName + " {");
+            debugprint(DebugType.Entry, name + " extends " + superName + " {");
         }
         
         @Override
@@ -136,19 +203,42 @@ public class AsmMainFrame extends javax.swing.JFrame {
 
         @Override
         public FieldVisitor visitField(int access, String name, String desc, String signature, Object value) {
-            output.print(DebugMessage.StatusType.Field, " " + desc + " " + name);
+            debugprint(DebugType.Field, " " + desc + " " + name);
+            /*
+                int offset = message.lastIndexOf(" ");
+                if (offset > 0) {
+                    String datatype = message.substring(0, offset);
+                    String param = message.substring(offset);
+                    appendToPane(datatype, Util.TextColor.Gold,  Util.FontType.Italic);
+                    appendToPane(param,    Util.TextColor.Green, Util.FontType.Normal);
+                }
+            */
             return null;
         }
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
-            output.print(DebugMessage.StatusType.Method, " " + name + desc);
+            debugprint(DebugType.Method, " " + name + desc);
+            /*
+                int offset1 = message.indexOf("(");
+                int offset2 = message.indexOf(")");
+                if (offset1 > 0 && offset2 > 0) {
+                    String method = message.substring(0, offset1);
+                    String param  = message.substring(offset1+1, offset2);
+                    String retval = message.substring(offset2+1);
+                    appendToPane(method, Util.TextColor.Blue,  Util.FontType.Normal);
+                    appendToPane("(",    Util.TextColor.Black, Util.FontType.Normal);
+                    appendToPane(param,  Util.TextColor.Gold,  Util.FontType.Italic);
+                    appendToPane(")",    Util.TextColor.Black, Util.FontType.Normal);
+                    appendToPane(retval, Util.TextColor.DkVio, Util.FontType.Italic);
+                }
+            */
             return null;
         }
 
         @Override
         public void visitEnd() {
-            output.print(DebugMessage.StatusType.EntryExit, "}");
+            debugprint(DebugType.Exit, "}");
         }
     }    
 
@@ -183,12 +273,15 @@ public class AsmMainFrame extends javax.swing.JFrame {
         readButton = new javax.swing.JButton();
         infoButton = new javax.swing.JButton();
         writeButton = new javax.swing.JButton();
+        bytecodeButton = new javax.swing.JButton();
+        clearButton = new javax.swing.JButton();
         viewTabbedPane = new javax.swing.JTabbedPane();
         outputScrollPane = new javax.swing.JScrollPane();
         outputTextPane = new javax.swing.JTextPane();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("AsmTest");
+        setMinimumSize(new java.awt.Dimension(250, 100));
 
         selectionPanel.setBorder(javax.swing.BorderFactory.createEtchedBorder());
         selectionPanel.setMinimumSize(new java.awt.Dimension(610, 100));
@@ -197,6 +290,11 @@ public class AsmMainFrame extends javax.swing.JFrame {
         classComboBox.setMaximumSize(new java.awt.Dimension(32767, 24));
         classComboBox.setMinimumSize(new java.awt.Dimension(441, 24));
         classComboBox.setPreferredSize(new java.awt.Dimension(500, 24));
+        classComboBox.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                classComboBoxActionPerformed(evt);
+            }
+        });
 
         jLabel1.setText("Class");
 
@@ -221,7 +319,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
                     .addComponent(jLabel1))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(selectionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(classComboBox, 0, 854, Short.MAX_VALUE)
+                    .addComponent(classComboBox, 0, 954, Short.MAX_VALUE)
                     .addComponent(jarSelectTextField, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                 .addContainerGap())
         );
@@ -262,6 +360,20 @@ public class AsmMainFrame extends javax.swing.JFrame {
             }
         });
 
+        bytecodeButton.setText("Bytecode");
+        bytecodeButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                bytecodeButtonActionPerformed(evt);
+            }
+        });
+
+        clearButton.setText("Clear");
+        clearButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                clearButtonActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout runPanelLayout = new javax.swing.GroupLayout(runPanel);
         runPanel.setLayout(runPanelLayout);
         runPanelLayout.setHorizontalGroup(
@@ -272,8 +384,12 @@ public class AsmMainFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(infoButton)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addComponent(bytecodeButton)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(writeButton)
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(clearButton)
+                .addContainerGap())
         );
         runPanelLayout.setVerticalGroup(
             runPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -282,7 +398,9 @@ public class AsmMainFrame extends javax.swing.JFrame {
                 .addGroup(runPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(readButton)
                     .addComponent(infoButton)
-                    .addComponent(writeButton))
+                    .addComponent(writeButton)
+                    .addComponent(bytecodeButton)
+                    .addComponent(clearButton))
                 .addContainerGap(24, Short.MAX_VALUE))
         );
 
@@ -310,11 +428,12 @@ public class AsmMainFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(runPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(viewTabbedPane, javax.swing.GroupLayout.DEFAULT_SIZE, 270, Short.MAX_VALUE)
+                .addComponent(viewTabbedPane, javax.swing.GroupLayout.DEFAULT_SIZE, 383, Short.MAX_VALUE)
                 .addContainerGap())
         );
 
         pack();
+        setLocationRelativeTo(null);
     }// </editor-fold>//GEN-END:initComponents
 
     private void loadButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_loadButtonActionPerformed
@@ -329,6 +448,9 @@ public class AsmMainFrame extends javax.swing.JFrame {
             jarFile = this.classFileChooser.getSelectedFile();
             this.jarSelectTextField.setText(jarFile.getAbsolutePath());
             
+            // save in properties
+            properties.setPropertiesItem(PropertiesFile.Type.JarFile, jarFile.getAbsolutePath());
+
             // now load up the class selections and set default selection
             setupClassList(jarFile);
         }
@@ -346,17 +468,14 @@ public class AsmMainFrame extends javax.swing.JFrame {
             InputStream is = classLoader.getResourceAsStream(clsname);
             classReaderData = new ClassReader(is);
             if (classReaderData != null)
-                output.print(DebugMessage.StatusType.Info, "Class read successfully!");
+                debugprint(DebugType.Info, "Class read successfully!");
         } catch (IOException ex) {
-            output.print(DebugMessage.StatusType.Error, ex.getMessage());
+            debugprint(DebugType.Error, ex.getMessage());
         }
     }//GEN-LAST:event_readButtonActionPerformed
 
     private void infoButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_infoButtonActionPerformed
         if (classReaderData != null) {
-            // clear the prev output
-            output.clear();
-
             // print the class info
             classReaderData.accept(new ClassPrinter(), 0);
         }
@@ -375,24 +494,52 @@ public class AsmMainFrame extends javax.swing.JFrame {
             // TODO: this doesn't seem to print anything
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintWriter printWriter = new PrintWriter(baos, true);
+//            Printer printer = new ASMifier();
+//            printer.print(printWriter);
             TraceClassVisitor tcv = new TraceClassVisitor(ca, printWriter); // cw
-            String tracedata = baos.toString();
-            output.print(DebugMessage.StatusType.Info, tracedata);
 
+            // TODO: documentation in sections 2.3.2 and 2.3.3 indicated that
+            // the following was needed, but I'm not sure what for.
+            //tcv.visit(int version, int access, String name, String signature, String superName, String[] interfaces);
+            //tcv.visitSource(String source, String debug);
+            //tcv.visitOuterClass(String owner, String name, String desc);
+            //tcv.visitAnnotation(String desc, boolean visible);
+            //tcv.visitAttribute(Attribute attr);
+            //tcv.visitInnerClass(String name, String outerName, String innerName, int access);
+            //tcv.visitField(int access, String name, String desc, String signature, Object value);
+            //tcv.visitMethod(int access, String name, String desc, String signature, String[] exceptions);
+            //tcv.visitEnd();
+
+            String tracedata = baos.toString();
+            debugprint(DebugType.Info, tracedata);
+            
             // perform verification on the transformed code
             // TODO: not sure how you get the results of the check...
-            CheckClassAdapter cca = new CheckClassAdapter(tcv); // (ClassVisitor)ca
+//            CheckClassAdapter cca = new CheckClassAdapter(tcv); // (ClassVisitor)ca
+        }
+    }//GEN-LAST:event_writeButtonActionPerformed
 
-            // TODO: it indicated that this was needed, but is it?
-            //cca.visit(...);
-            // ...
-            //cca.visitEnd();
+    private void bytecodeButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_bytecodeButtonActionPerformed
+        if (classReaderData != null) {
+            // create a writer & sync with reader input to optimize for changes only
+            ClassWriter cw = new ClassWriter(classReaderData, 0);
             
             // display the converted data
             byte[] bytes = cw.toByteArray();
             output.printArray(bytes);
         }
-    }//GEN-LAST:event_writeButtonActionPerformed
+    }//GEN-LAST:event_bytecodeButtonActionPerformed
+
+    private void classComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_classComboBoxActionPerformed
+        // save the selection in the properties file
+        String classname = (String)classComboBox.getSelectedItem();
+        properties.setPropertiesItem(PropertiesFile.Type.Class, classname);
+    }//GEN-LAST:event_classComboBoxActionPerformed
+
+    private void clearButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_clearButtonActionPerformed
+        // clear the prev output
+        output.clear();
+    }//GEN-LAST:event_clearButtonActionPerformed
 
     /**
      * @param args the command line arguments
@@ -410,15 +557,11 @@ public class AsmMainFrame extends javax.swing.JFrame {
                     break;
                 }
             }
-        } catch (ClassNotFoundException ex) {
-            java.util.logging.Logger.getLogger(AsmMainFrame.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-        } catch (InstantiationException ex) {
-            java.util.logging.Logger.getLogger(AsmMainFrame.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-        } catch (IllegalAccessException ex) {
-            java.util.logging.Logger.getLogger(AsmMainFrame.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-        } catch (javax.swing.UnsupportedLookAndFeelException ex) {
+        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | javax.swing.UnsupportedLookAndFeelException ex) {
             java.util.logging.Logger.getLogger(AsmMainFrame.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         }
+        //</editor-fold>
+        
         //</editor-fold>
 
         /* Create and display the form */
@@ -428,14 +571,17 @@ public class AsmMainFrame extends javax.swing.JFrame {
             }
         });
     }
-    
+
+    private final PropertiesFile properties;
     private final DebugMessage output;
     private ClassReader classReaderData;
     private File        jarFile;
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JButton bytecodeButton;
     private javax.swing.JComboBox classComboBox;
     private javax.swing.JFileChooser classFileChooser;
+    private javax.swing.JButton clearButton;
     private javax.swing.JButton infoButton;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JTextField jarSelectTextField;
