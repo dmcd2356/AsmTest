@@ -34,7 +34,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
 
     // specifies the debug message types (and, hence, the associated text color)
     public enum DebugType {
-        Error, Warning, Success, Info, Entry, Exit, Field, Method;
+        Error, Warn, Info, Entry, Exit, Event, Desc, Field, Method, Return;
     }
     
     /**
@@ -84,15 +84,17 @@ public class AsmMainFrame extends javax.swing.JFrame {
      */
     private String getDebugTypeString (DebugType type) {
         switch (type) {
-            case Error :    return "ERROR";
-            case Warning :  return "WARN ";
-            case Success :  return "PASS ";
+            case Error :    return "ERROR ";
+            case Warn :     return "WARN  ";
             default :
-            case Info :     return "DEBUG";
-            case Entry :    return "ENTRY";
-            case Exit :     return "EXIT ";
-            case Field :    return "FIELD";
-            case Method :   return "METH ";
+            case Info :     return "INFO  ";
+            case Entry :    return "ENTRY ";
+            case Exit :     return "EXIT  ";
+            case Event :    return "EVENT ";
+            case Desc :     return "DESC  ";
+            case Field :    return "FIELD ";
+            case Method :   return "METHOD";
+            case Return :   return "RETURN";
         }
     }
     
@@ -101,20 +103,33 @@ public class AsmMainFrame extends javax.swing.JFrame {
      * 
      * @param handler - the DebugMessage instance to apply it to
      */
-//        Error, Warning, Success, Info, Entry, Exit, Field, Method;
     private void setDebugColorScheme (DebugMessage handler) {
-        handler.setTypeColor (getDebugTypeString(DebugType.Error),   asmtest.Util.TextColor.Red,   asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Warning), asmtest.Util.TextColor.DkRed, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Success), asmtest.Util.TextColor.Green, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Info),    asmtest.Util.TextColor.Black, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Entry),   asmtest.Util.TextColor.Brown, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Exit),    asmtest.Util.TextColor.Brown, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Field),   asmtest.Util.TextColor.Gold,  asmtest.Util.FontType.BoldItalic);
-        handler.setTypeColor (getDebugTypeString(DebugType.Method),  asmtest.Util.TextColor.Blue,  asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Error),  asmtest.Util.TextColor.Red,   asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Warn),   asmtest.Util.TextColor.DkRed, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Info),   asmtest.Util.TextColor.Black, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Entry),  asmtest.Util.TextColor.Brown, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Exit),   asmtest.Util.TextColor.Brown, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Event),  asmtest.Util.TextColor.Gold,  asmtest.Util.FontType.BoldItalic);
+        handler.setTypeColor (getDebugTypeString(DebugType.Desc),   asmtest.Util.TextColor.Gold,  asmtest.Util.FontType.BoldItalic);
+        handler.setTypeColor (getDebugTypeString(DebugType.Field),  asmtest.Util.TextColor.Green, asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Method), asmtest.Util.TextColor.Blue,  asmtest.Util.FontType.Bold);
+        handler.setTypeColor (getDebugTypeString(DebugType.Return), asmtest.Util.TextColor.DkVio, asmtest.Util.FontType.BoldItalic);
     }
     
     private void debugprint(DebugType type, String message) {
         output.print(getDebugTypeString(type), message);
+    }
+    
+    private void debugfield(DebugType type, String message) {
+        output.printRaw(getDebugTypeString(type), message);
+    }
+    
+    private void debugheader() {
+        output.printHeader();
+    }
+    
+    private void debugterm() {
+        output.printTerm();
     }
     
     /**
@@ -203,36 +218,27 @@ public class AsmMainFrame extends javax.swing.JFrame {
 
         @Override
         public FieldVisitor visitField(int access, String name, String desc, String signature, Object value) {
-            debugprint(DebugType.Field, " " + desc + " " + name);
-            /*
-                int offset = message.lastIndexOf(" ");
-                if (offset > 0) {
-                    String datatype = message.substring(0, offset);
-                    String param = message.substring(offset);
-                    appendToPane(datatype, Util.TextColor.Gold,  Util.FontType.Italic);
-                    appendToPane(param,    Util.TextColor.Green, Util.FontType.Normal);
-                }
-            */
+            debugheader();
+            debugfield(DebugType.Desc,  " " + desc);
+            debugfield(DebugType.Field, " " + name);
+            debugterm();
             return null;
         }
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
-            debugprint(DebugType.Method, " " + name + desc);
-            /*
-                int offset1 = message.indexOf("(");
-                int offset2 = message.indexOf(")");
-                if (offset1 > 0 && offset2 > 0) {
-                    String method = message.substring(0, offset1);
-                    String param  = message.substring(offset1+1, offset2);
-                    String retval = message.substring(offset2+1);
-                    appendToPane(method, Util.TextColor.Blue,  Util.FontType.Normal);
-                    appendToPane("(",    Util.TextColor.Black, Util.FontType.Normal);
-                    appendToPane(param,  Util.TextColor.Gold,  Util.FontType.Italic);
-                    appendToPane(")",    Util.TextColor.Black, Util.FontType.Normal);
-                    appendToPane(retval, Util.TextColor.DkVio, Util.FontType.Italic);
-                }
-            */
+            // split description field into the parameters and the return value
+            String retval = "";
+            int offset = desc.lastIndexOf(')');
+            if (offset > 0) {
+                retval = desc.substring(offset+1);
+                desc   = desc.substring(0, offset+1);
+            }
+            debugheader();
+            debugfield(DebugType.Method, " " + name);
+            debugfield(DebugType.Desc,   " " + desc);
+            debugfield(DebugType.Return, retval);
+            debugterm();
             return null;
         }
 
@@ -468,7 +474,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
             InputStream is = classLoader.getResourceAsStream(clsname);
             classReaderData = new ClassReader(is);
             if (classReaderData != null)
-                debugprint(DebugType.Info, "Class read successfully!");
+                debugprint(DebugType.Info, "Class read: " + clsname);
         } catch (IOException ex) {
             debugprint(DebugType.Error, ex.getMessage());
         }
@@ -497,6 +503,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
 //            Printer printer = new ASMifier();
 //            printer.print(printWriter);
             TraceClassVisitor tcv = new TraceClassVisitor(ca, printWriter); // cw
+            debugprint(DebugType.Info, "TraceClassVisitor read");
 
             // TODO: documentation in sections 2.3.2 and 2.3.3 indicated that
             // the following was needed, but I'm not sure what for.

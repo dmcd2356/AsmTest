@@ -84,8 +84,8 @@ public class DebugMessage {
      * @return the properly formatted version
      */
     private String formatStringLength (String value) {
-        value += "     ";
-        return value.substring(0, 5).toUpperCase();
+        value += "      ";
+        return value.substring(0, 6).toUpperCase();
     }
     
     /**
@@ -167,6 +167,21 @@ public class DebugMessage {
     }
     
     /**
+     * outputs the header info (timestamp) to the debug window
+     */
+    public void printHeader() {
+        String tstamp = "[" + getElapsedTime() + "] ";
+        appendToPane(tstamp, Util.TextColor.Brown, Util.FontType.Bold);
+    }
+    
+    /**
+     * outputs a termination char to the debug window
+     */
+    public void printTerm() {
+        appendToPane(newLine, Util.TextColor.Black, "Courier", 11, Util.FontType.Normal);
+    }
+    
+    /**
      * displays a message in the debug window (no termination).
      * 
      * @param type  - the type of message to display
@@ -208,8 +223,7 @@ public class DebugMessage {
         type = formatStringLength(type);
         
         // display the timestamp and message as a prefix to the line
-        String tstamp = "[" + getElapsedTime() + "] ";
-        appendToPane(tstamp, Util.TextColor.Brown, Util.FontType.Bold);
+        printHeader();
 
         // now print the message with a terminator
         if (showType)
