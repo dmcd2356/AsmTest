@@ -16,10 +16,6 @@ import javax.swing.text.AttributeSet;
  */
 public class DebugMessage {
     
-    public enum StatusType {
-        Info, Warning, Error, EntryExit, Field, Method, Event;
-    }
-
     // used in formatting printArray
     private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
     
@@ -27,16 +23,19 @@ public class DebugMessage {
 
     private final JTextPane    debugTextPane;
     private long  startTime;
-    private final boolean showHours;
-    private final boolean showType;
+    private boolean showTime;
+    private boolean showHours;
+    private boolean showType;
     private final HashMap<String, FontInfo> messageTypeTbl;
 
     DebugMessage (JTextPane textPane) {
         debugTextPane = textPane;
         startTime = System.currentTimeMillis(); // get the start time
+        showTime = false;
         showHours = false;
         showType = false;
         messageTypeTbl = new HashMap<>();
+        setTypeColor ("Hexdata", Util.TextColor.Black, Util.FontType.Bold);
     }
     
     /**
@@ -125,6 +124,30 @@ public class DebugMessage {
     }
 
     /**
+     * enables/disables the display of time when using the print command
+     * @param enable - true to enable display of time preceeding message
+     */
+    public void enableTime(boolean enable) {
+        showTime = enable;
+    }
+    
+    /**
+     * enables/disables the display of hours in time display when using the print command
+     * @param enable - true to enable display of hours preceeding message
+     */
+    public void enableHours(boolean enable) {
+        showHours = enable;
+    }
+    
+    /**
+     * enables/disables the display of message type when using the print command
+     * @param enable - true to enable display of message type preceeding message
+     */
+    public void enableType(boolean enable) {
+        showType = enable;
+    }
+    
+    /**
      * resets the start time
      */
     public void resetTime() {
@@ -167,11 +190,35 @@ public class DebugMessage {
     }
     
     /**
-     * outputs the header info (timestamp) to the debug window
+     * outputs the timestamp info to the debug window.
      */
-    public void printHeader() {
+    public void printTimestamp() {
         String tstamp = "[" + getElapsedTime() + "] ";
         appendToPane(tstamp, Util.TextColor.Brown, Util.FontType.Bold);
+    }
+    
+    /**
+     * outputs the message type to the debug window.
+     * 
+     * @param type - the message type to display
+     */
+    public void printType(String type) {
+        type = formatStringLength(type);
+        printRaw(type, type + ": ");
+    }
+    
+    /**
+     * outputs the header info (timestamp and message type) to the debug window
+     * if they are enabled.
+     * 
+     * @param type - the message type to display
+     */
+    public void printHeader(String type) {
+        if (showTime)
+            printTimestamp();
+        if (showType) {
+            printType(type);
+        }
     }
     
     /**
@@ -215,21 +262,16 @@ public class DebugMessage {
      * @param message - the message to display
      */
     public void print(String type, String message) {
-        // skip if no message
-        if (message == null || message.isEmpty())
-            return;
+        if (message != null && !message.isEmpty()) {
+            // limit the type to a 5-char length (pad with spaces if necessary)
+            type = formatStringLength(type);
         
-        // limit the type to a 5-char length (pad with spaces if necessary)
-        type = formatStringLength(type);
-        
-        // display the timestamp and message as a prefix to the line
-        printHeader();
+            // print the header info if enabled (timestamp, message type)
+            printHeader(type);
 
-        // now print the message with a terminator
-        if (showType)
-            printRaw(type, type + ": " + message + newLine);
-        else
+            // now print the message with a terminator
             printRaw(type, message + newLine);
+        }
     }
 
     /**
@@ -274,6 +316,7 @@ public class DebugMessage {
             address = address.substring(address.length() - 6);
             
             // display the data
+            printHeader("Hexdata");
             appendToPane(address + ": ", Util.TextColor.Brown,  Util.FontType.Italic);
             appendToPane(hexdata + "  ", Util.TextColor.Black,  Util.FontType.Normal);
             appendToPane(ascdata + newLine, Util.TextColor.Green,  Util.FontType.Normal);

@@ -23,8 +23,8 @@ import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
-import static org.objectweb.asm.Opcodes.ASM4;
 import org.objectweb.asm.util.TraceClassVisitor;
+import static org.objectweb.asm.Opcodes.ASM4;
 
 /**
  *
@@ -45,6 +45,8 @@ public class AsmMainFrame extends javax.swing.JFrame {
         
         // setup output panel for writing to
         output = new DebugMessage(this.outputTextPane);
+        output.enableTime(false);
+        output.enableType(false);
         setDebugColorScheme(output);
 
         // init default selections
@@ -75,61 +77,21 @@ public class AsmMainFrame extends javax.swing.JFrame {
     }
 
     /**
-     * converts the DebugType to the corresponding String key value for DebugMessage.print.
-     * Note that ErrorExit and EntryExit are not listed because they are turned into
-     * the other types when sending to print.
-     * 
-     * @param type - the DebugType value to convert
-     * @return the corresponding string entry
-     */
-    private String getDebugTypeString (DebugType type) {
-        switch (type) {
-            case Error :    return "ERROR ";
-            case Warn :     return "WARN  ";
-            default :
-            case Info :     return "INFO  ";
-            case Entry :    return "ENTRY ";
-            case Exit :     return "EXIT  ";
-            case Event :    return "EVENT ";
-            case Desc :     return "DESC  ";
-            case Field :    return "FIELD ";
-            case Method :   return "METHOD";
-            case Return :   return "RETURN";
-        }
-    }
-    
-    /**
      * sets up the DebugMessage instance with the color selections to use.
      * 
      * @param handler - the DebugMessage instance to apply it to
      */
     private void setDebugColorScheme (DebugMessage handler) {
-        handler.setTypeColor (getDebugTypeString(DebugType.Error),  asmtest.Util.TextColor.Red,   asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Warn),   asmtest.Util.TextColor.DkRed, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Info),   asmtest.Util.TextColor.Black, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Entry),  asmtest.Util.TextColor.Brown, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Exit),   asmtest.Util.TextColor.Brown, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Event),  asmtest.Util.TextColor.Gold,  asmtest.Util.FontType.BoldItalic);
-        handler.setTypeColor (getDebugTypeString(DebugType.Desc),   asmtest.Util.TextColor.Gold,  asmtest.Util.FontType.BoldItalic);
-        handler.setTypeColor (getDebugTypeString(DebugType.Field),  asmtest.Util.TextColor.Green, asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Method), asmtest.Util.TextColor.Blue,  asmtest.Util.FontType.Bold);
-        handler.setTypeColor (getDebugTypeString(DebugType.Return), asmtest.Util.TextColor.DkVio, asmtest.Util.FontType.BoldItalic);
-    }
-    
-    private void debugprint(DebugType type, String message) {
-        output.print(getDebugTypeString(type), message);
-    }
-    
-    private void debugfield(DebugType type, String message) {
-        output.printRaw(getDebugTypeString(type), message);
-    }
-    
-    private void debugheader() {
-        output.printHeader();
-    }
-    
-    private void debugterm() {
-        output.printTerm();
+        handler.setTypeColor (DebugType.Error.toString(),  Util.TextColor.Red,   Util.FontType.Bold);
+        handler.setTypeColor (DebugType.Warn.toString(),   Util.TextColor.DkRed, Util.FontType.Bold);
+        handler.setTypeColor (DebugType.Info.toString(),   Util.TextColor.Black, Util.FontType.Bold);
+        handler.setTypeColor (DebugType.Entry.toString(),  Util.TextColor.Brown, Util.FontType.Bold);
+        handler.setTypeColor (DebugType.Exit.toString(),   Util.TextColor.Brown, Util.FontType.Bold);
+        handler.setTypeColor (DebugType.Event.toString(),  Util.TextColor.Gold,  Util.FontType.BoldItalic);
+        handler.setTypeColor (DebugType.Desc.toString(),   Util.TextColor.Gold,  Util.FontType.BoldItalic);
+        handler.setTypeColor (DebugType.Field.toString(),  Util.TextColor.Green, Util.FontType.Bold);
+        handler.setTypeColor (DebugType.Method.toString(), Util.TextColor.Blue,  Util.FontType.Bold);
+        handler.setTypeColor (DebugType.Return.toString(), Util.TextColor.DkVio, Util.FontType.BoldItalic);
     }
     
     /**
@@ -149,7 +111,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
         try {
             zip = new ZipInputStream(jarFile.toURI().toURL().openStream());
         } catch (IOException ex) {
-            debugprint(DebugType.Error, ex.getMessage());
+            output.print(DebugType.Error.toString(), ex.getMessage());
             return;
         }
         while (true) {
@@ -168,7 +130,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
                     }
                 }
             } catch (IOException ex) {
-                debugprint(DebugType.Error, ex.getMessage());
+                output.print(DebugType.Error.toString(), ex.getMessage());
                 break;
             }
         }
@@ -177,7 +139,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
         try {
             zip.close();
         } catch (IOException ex) {
-            debugprint(DebugType.Error, ex.getMessage());
+            output.print(DebugType.Error.toString(), ex.getMessage());
         }
                 
         // set the 1st entry as the default selection
@@ -192,7 +154,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
         
         @Override
         public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-            debugprint(DebugType.Entry, name + " extends " + superName + " {");
+            output.print(DebugType.Entry.toString(), name + " extends " + superName + " {");
         }
         
         @Override
@@ -218,10 +180,10 @@ public class AsmMainFrame extends javax.swing.JFrame {
 
         @Override
         public FieldVisitor visitField(int access, String name, String desc, String signature, Object value) {
-            debugheader();
-            debugfield(DebugType.Desc,  " " + desc);
-            debugfield(DebugType.Field, " " + name);
-            debugterm();
+            output.printHeader(DebugType.Method.toString());
+            output.printRaw(DebugType.Desc.toString(),  " " + desc);
+            output.printRaw(DebugType.Field.toString(), " " + name);
+            output.printTerm();
             return null;
         }
 
@@ -234,17 +196,17 @@ public class AsmMainFrame extends javax.swing.JFrame {
                 retval = desc.substring(offset+1);
                 desc   = desc.substring(0, offset+1);
             }
-            debugheader();
-            debugfield(DebugType.Method, " " + name);
-            debugfield(DebugType.Desc,   " " + desc);
-            debugfield(DebugType.Return, retval);
-            debugterm();
+            output.printHeader(DebugType.Method.toString());
+            output.printRaw(DebugType.Method.toString(), " " + name);
+            output.printRaw(DebugType.Desc.toString(),   " " + desc);
+            output.printRaw(DebugType.Return.toString(), retval);
+            output.printTerm();
             return null;
         }
 
         @Override
         public void visitEnd() {
-            debugprint(DebugType.Exit, "}");
+            output.print(DebugType.Exit.toString(), "}");
         }
     }    
 
@@ -474,9 +436,9 @@ public class AsmMainFrame extends javax.swing.JFrame {
             InputStream is = classLoader.getResourceAsStream(clsname);
             classReaderData = new ClassReader(is);
             if (classReaderData != null)
-                debugprint(DebugType.Info, "Class read: " + clsname);
+                output.print(DebugType.Info.toString(), "Class read: " + clsname);
         } catch (IOException ex) {
-            debugprint(DebugType.Error, ex.getMessage());
+            output.print(DebugType.Error.toString(), ex.getMessage());
         }
     }//GEN-LAST:event_readButtonActionPerformed
 
@@ -503,7 +465,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
 //            Printer printer = new ASMifier();
 //            printer.print(printWriter);
             TraceClassVisitor tcv = new TraceClassVisitor(ca, printWriter); // cw
-            debugprint(DebugType.Info, "TraceClassVisitor read");
+            output.print(DebugType.Info.toString(), "TraceClassVisitor read");
 
             // TODO: documentation in sections 2.3.2 and 2.3.3 indicated that
             // the following was needed, but I'm not sure what for.
@@ -518,7 +480,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
             //tcv.visitEnd();
 
             String tracedata = baos.toString();
-            debugprint(DebugType.Info, tracedata);
+            output.print(DebugType.Info.toString(), tracedata);
             
             // perform verification on the transformed code
             // TODO: not sure how you get the results of the check...
