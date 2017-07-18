@@ -16,6 +16,11 @@ import javax.swing.text.AttributeSet;
  */
 public class DebugMessage {
     
+    // specifies the local debug message types
+    private enum DebugType {
+        Normal, Hexdata, Addr, Ascii, Tstamp;
+    }
+    
     // used in formatting printArray
     private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
     
@@ -35,7 +40,13 @@ public class DebugMessage {
         showHours = false;
         showType = false;
         messageTypeTbl = new HashMap<>();
-        setTypeColor ("Hexdata", Util.TextColor.Black, Util.FontType.Bold);
+
+        // set some default text colors for local use
+        setTypeColor (DebugType.Normal.toString(),  Util.TextColor.Black, Util.FontType.Normal);
+        setTypeColor (DebugType.Tstamp.toString(),  Util.TextColor.Brown, Util.FontType.Normal);
+        setTypeColor (DebugType.Hexdata.toString(), Util.TextColor.DkVio, Util.FontType.Normal);
+        setTypeColor (DebugType.Addr.toString(),    Util.TextColor.Brown, Util.FontType.Italic);
+        setTypeColor (DebugType.Ascii.toString(),   Util.TextColor.Green, Util.FontType.Normal);
     }
     
     /**
@@ -127,7 +138,7 @@ public class DebugMessage {
      * enables/disables the display of time when using the print command
      * @param enable - true to enable display of time preceeding message
      */
-    public void enableTime(boolean enable) {
+    public final void enableTime(boolean enable) {
         showTime = enable;
     }
     
@@ -135,7 +146,7 @@ public class DebugMessage {
      * enables/disables the display of hours in time display when using the print command
      * @param enable - true to enable display of hours preceeding message
      */
-    public void enableHours(boolean enable) {
+    public final void enableHours(boolean enable) {
         showHours = enable;
     }
     
@@ -143,28 +154,28 @@ public class DebugMessage {
      * enables/disables the display of message type when using the print command
      * @param enable - true to enable display of message type preceeding message
      */
-    public void enableType(boolean enable) {
+    public final void enableType(boolean enable) {
         showType = enable;
     }
     
     /**
      * resets the start time
      */
-    public void resetTime() {
+    public final void resetTime() {
         startTime = System.currentTimeMillis(); // get the start time
     }
     
     /**
      * clears the display.
      */
-    public void clear() {
+    public final void clear() {
         debugTextPane.setText("");
     }
 
     /**
      * updates the display immediately
      */
-    public void updateDisplay () {
+    public final void updateDisplay () {
         Graphics graphics = debugTextPane.getGraphics();
         if (graphics != null)
             debugTextPane.update(graphics);
@@ -176,13 +187,33 @@ public class DebugMessage {
      * 
      * @param type  - the type to associate with the font characteristics
      * @param color - the color to assign to the type
-     * @param font  - the font attributes to associate with the type
+     * @param ftype - the font attributes to associate with the type
      */
-    public void setTypeColor (String type, Util.TextColor color, Util.FontType font) {
+    public final void setTypeColor (String type, Util.TextColor color, Util.FontType ftype) {
         // limit the type to a 5-char length (pad with spaces if necessary)
         type = formatStringLength(type);
         
-        FontInfo fontinfo = new FontInfo(color, font);
+        FontInfo fontinfo = new FontInfo(color, ftype);
+        if (messageTypeTbl.containsKey(type))
+            messageTypeTbl.replace(type, fontinfo);
+        else
+            messageTypeTbl.put(type, fontinfo);
+    }
+    
+    /**
+     * same as above, but lets user select font family and size as well.
+     * 
+     * @param type  - the type to associate with the font characteristics
+     * @param color - the color to assign to the type
+     * @param ftype - the font attributes to associate with the type
+     * @param size  - the size of the font
+     * @param font  - the font family (e.g. Courier, Ariel, etc.)
+     */
+    public final void setTypeColor (String type, Util.TextColor color, Util.FontType ftype, int size, String font) {
+        // limit the type to a 5-char length (pad with spaces if necessary)
+        type = formatStringLength(type);
+        
+        FontInfo fontinfo = new FontInfo(color, ftype, size, font);
         if (messageTypeTbl.containsKey(type))
             messageTypeTbl.replace(type, fontinfo);
         else
@@ -192,9 +223,9 @@ public class DebugMessage {
     /**
      * outputs the timestamp info to the debug window.
      */
-    public void printTimestamp() {
+    public final void printTimestamp() {
         String tstamp = "[" + getElapsedTime() + "] ";
-        appendToPane(tstamp, Util.TextColor.Brown, Util.FontType.Bold);
+        printRaw(DebugType.Tstamp.toString(), tstamp);
     }
     
     /**
@@ -202,7 +233,7 @@ public class DebugMessage {
      * 
      * @param type - the message type to display
      */
-    public void printType(String type) {
+    public final void printType(String type) {
         type = formatStringLength(type);
         printRaw(type, type + ": ");
     }
@@ -213,7 +244,7 @@ public class DebugMessage {
      * 
      * @param type - the message type to display
      */
-    public void printHeader(String type) {
+    public final void printHeader(String type) {
         if (showTime)
             printTimestamp();
         if (showType) {
@@ -224,7 +255,7 @@ public class DebugMessage {
     /**
      * outputs a termination char to the debug window
      */
-    public void printTerm() {
+    public final void printTerm() {
         appendToPane(newLine, Util.TextColor.Black, "Courier", 11, Util.FontType.Normal);
     }
     
@@ -234,22 +265,27 @@ public class DebugMessage {
      * @param type  - the type of message to display
      * @param message - message contents to display
      */
-    public void printRaw(String type, String message) {
+    public final void printRaw(String type, String message) {
         if (message != null && !message.isEmpty()) {
             // limit the type to a 5-char length (pad with spaces if necessary)
             type = formatStringLength(type);
         
-            // get the color and font for the specified type
-            // (if not found, use default values)
+            // set default values (if type was not found)
             Util.TextColor color = Util.TextColor.Black;
-            Util.FontType ftype = Util.FontType.Bold;
+            Util.FontType ftype = Util.FontType.Normal;
+            String font = "Courier";
+            int size = 11;
+
+            // get the color and font for the specified type
             FontInfo fontinfo = messageTypeTbl.get(type);
             if (fontinfo != null) {
                 color = fontinfo.color;
                 ftype = fontinfo.fonttype;
+                font  = fontinfo.font;
+                size  = fontinfo.size;
             }
 
-            appendToPane(message, color, "Courier", 11, ftype);
+            appendToPane(message, color, font, size, ftype);
         }
     }
 
@@ -261,7 +297,7 @@ public class DebugMessage {
      * @param type    - the type of message
      * @param message - the message to display
      */
-    public void print(String type, String message) {
+    public final void print(String type, String message) {
         if (message != null && !message.isEmpty()) {
             // limit the type to a 5-char length (pad with spaces if necessary)
             type = formatStringLength(type);
@@ -278,11 +314,13 @@ public class DebugMessage {
      * prints the array of bytes to the status display.
      * 
      * @param array - the data to display
+     * @param showAscii - true if also display the ASCII char representation to the right
      */
-    public void printArray(byte[] array) {
+    public final void printByteArray(byte[] array, boolean showAscii) {
+
         final int bytesperline = 32; // the number of bytes to print per line
         
-        appendToPane("Size of array = " + array.length + " bytes" + newLine, Util.TextColor.Black,  Util.FontType.Normal);
+        print(DebugType.Normal.toString(), "Size of array = " + array.length + " bytes");
 
         // print line at a time
         for (int offset = 0; offset < array.length; offset += bytesperline) {
@@ -316,17 +354,18 @@ public class DebugMessage {
             address = address.substring(address.length() - 6);
             
             // display the data
-            printHeader("Hexdata");
-            appendToPane(address + ": ", Util.TextColor.Brown,  Util.FontType.Italic);
-            appendToPane(hexdata + "  ", Util.TextColor.Black,  Util.FontType.Normal);
-            appendToPane(ascdata + newLine, Util.TextColor.Green,  Util.FontType.Normal);
+            printHeader(DebugType.Hexdata.toString());
+            printRaw(DebugType.Addr.toString()   , address + ": ");
+            printRaw(DebugType.Hexdata.toString(), hexdata + "  ");
+            if (showAscii)
+                printRaw(DebugType.Ascii.toString(), ascdata + newLine);
         }
     }
     
     /**
      * a simple test of the colors
      */
-    public void testColors () {
+    public final void testColors () {
         appendToPane("-----------------------------------------" + newLine, Util.TextColor.Black, Util.FontType.Normal);
         for (Util.TextColor color : Util.TextColor.values()) {
             appendToPane("This is a sample of the color: " + color + newLine, color, Util.FontType.Bold);
@@ -345,6 +384,13 @@ public class DebugMessage {
             fonttype = type;
             font = "Courier";
             size = 11;
+        }
+        
+        FontInfo (Util.TextColor col, Util.FontType type, int fsize, String fontname) {
+            color = col;
+            fonttype = type;
+            font = fontname;
+            size = fsize;
         }
     }
 }

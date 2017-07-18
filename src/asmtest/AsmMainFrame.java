@@ -32,8 +32,8 @@ import static org.objectweb.asm.Opcodes.ASM4;
  */
 public class AsmMainFrame extends javax.swing.JFrame {
 
-    // specifies the debug message types (and, hence, the associated text color)
-    public enum DebugType {
+    // specifies the local debug message types
+    private enum DebugType {
         Error, Warn, Info, Entry, Exit, Event, Desc, Field, Method, Return;
     }
     
@@ -83,15 +83,15 @@ public class AsmMainFrame extends javax.swing.JFrame {
      */
     private void setDebugColorScheme (DebugMessage handler) {
         handler.setTypeColor (DebugType.Error.toString(),  Util.TextColor.Red,   Util.FontType.Bold);
-        handler.setTypeColor (DebugType.Warn.toString(),   Util.TextColor.DkRed, Util.FontType.Bold);
-        handler.setTypeColor (DebugType.Info.toString(),   Util.TextColor.Black, Util.FontType.Bold);
-        handler.setTypeColor (DebugType.Entry.toString(),  Util.TextColor.Brown, Util.FontType.Bold);
-        handler.setTypeColor (DebugType.Exit.toString(),   Util.TextColor.Brown, Util.FontType.Bold);
-        handler.setTypeColor (DebugType.Event.toString(),  Util.TextColor.Gold,  Util.FontType.BoldItalic);
-        handler.setTypeColor (DebugType.Desc.toString(),   Util.TextColor.Gold,  Util.FontType.BoldItalic);
-        handler.setTypeColor (DebugType.Field.toString(),  Util.TextColor.Green, Util.FontType.Bold);
-        handler.setTypeColor (DebugType.Method.toString(), Util.TextColor.Blue,  Util.FontType.Bold);
-        handler.setTypeColor (DebugType.Return.toString(), Util.TextColor.DkVio, Util.FontType.BoldItalic);
+        handler.setTypeColor (DebugType.Warn.toString(),   Util.TextColor.DkRed, Util.FontType.Normal);
+        handler.setTypeColor (DebugType.Info.toString(),   Util.TextColor.Black, Util.FontType.Normal);
+        handler.setTypeColor (DebugType.Entry.toString(),  Util.TextColor.Brown, Util.FontType.Normal);
+        handler.setTypeColor (DebugType.Exit.toString(),   Util.TextColor.Brown, Util.FontType.Normal);
+        handler.setTypeColor (DebugType.Event.toString(),  Util.TextColor.Gold,  Util.FontType.Italic);
+        handler.setTypeColor (DebugType.Desc.toString(),   Util.TextColor.Gold,  Util.FontType.Italic);
+        handler.setTypeColor (DebugType.Field.toString(),  Util.TextColor.Green, Util.FontType.Normal);
+        handler.setTypeColor (DebugType.Method.toString(), Util.TextColor.Blue,  Util.FontType.Normal);
+        handler.setTypeColor (DebugType.Return.toString(), Util.TextColor.DkVio, Util.FontType.Italic);
     }
     
     /**
@@ -495,7 +495,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
             
             // display the converted data
             byte[] bytes = cw.toByteArray();
-            output.printArray(bytes);
+            output.printByteArray(bytes, true);
         }
     }//GEN-LAST:event_bytecodeButtonActionPerformed
 
