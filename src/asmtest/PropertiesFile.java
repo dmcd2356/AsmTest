@@ -131,6 +131,8 @@ public class PropertiesFile {
         // (currently the only parameter is the last configuration file loaded)
         if (props == null)
             return;
+        if (value == null)
+            value = "";
 
         // make sure the properties file exists
         File propsfile = new File(PROPERTIES_PATH + PROPERTIES_FILE);
