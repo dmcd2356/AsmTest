@@ -12,8 +12,12 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import javax.swing.JFileChooser;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import org.objectweb.asm.AnnotationVisitor;
@@ -25,6 +29,10 @@ import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.util.TraceClassVisitor;
 import static org.objectweb.asm.Opcodes.ASM4;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.LocalVariableNode;
+import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.ParameterNode;
 
 /**
  *
@@ -34,7 +42,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
 
     // specifies the local debug message types
     private enum DebugType {
-        Error, Warn, Info, Entry, Exit, Event, Desc, Field, Method, Return;
+        Error, Warn, Info, Entry, Exit, Event, Desc, Field, Method, Detail, Return;
     }
     
     /**
@@ -50,7 +58,8 @@ public class AsmMainFrame extends javax.swing.JFrame {
         setDebugColorScheme(output);
 
         // init default selections
-        jarFile = null;
+        jarpath = "";
+        clsNodeMap = new HashMap<>();
         this.classFileChooser.setCurrentDirectory(new File(System.getProperty("user.dir")));
 
         properties = new PropertiesFile(output);
@@ -59,17 +68,16 @@ public class AsmMainFrame extends javax.swing.JFrame {
             String jarfilename = properties.getPropertiesItem(PropertiesFile.Type.JarFile);
             String classname   = properties.getPropertiesItem(PropertiesFile.Type.Class);
             
-            jarFile = new File(jarfilename);
-            if (!jarFile.isFile())
-                jarFile = null;
-            else {
+            File jarFile = new File(jarfilename);
+            if (jarFile.isFile()) {
                 // set the jar file selection
-                this.jarSelectTextField.setText(jarFile.getAbsolutePath());
+                jarpath = jarfilename;
+                this.jarSelectTextField.setText(jarpath);
                 // set the default dir for the jar selection
-                String jarpath = jarfilename.substring(0, jarfilename.lastIndexOf('/'));
-                this.classFileChooser.setCurrentDirectory(new File(jarpath));
+                String pathonly = jarfilename.substring(0, jarpath.lastIndexOf('/'));
+                this.classFileChooser.setCurrentDirectory(new File(pathonly));
                 // setup the class list selection
-                setupClassList(jarFile);
+                setupClassList(jarpath);
                 // set the class selection (if found)
                 this.classComboBox.setSelectedItem(classname);
             }
@@ -91,7 +99,14 @@ public class AsmMainFrame extends javax.swing.JFrame {
         handler.setTypeColor (DebugType.Desc.toString(),   Util.TextColor.Gold,  Util.FontType.Italic);
         handler.setTypeColor (DebugType.Field.toString(),  Util.TextColor.Green, Util.FontType.Normal);
         handler.setTypeColor (DebugType.Method.toString(), Util.TextColor.Blue,  Util.FontType.Normal);
+        handler.setTypeColor (DebugType.Detail.toString(), Util.TextColor.Blue,  Util.FontType.Italic);
         handler.setTypeColor (DebugType.Return.toString(), Util.TextColor.DkVio, Util.FontType.Italic);
+    }
+    
+    private void printTaggedInfo (String tag, String info) {
+        output.printRaw(DebugType.Info.toString(), tag + ": ");
+        output.printRaw(DebugType.Detail.toString(), info);
+        output.printTerm();
     }
     
     /**
@@ -99,52 +114,51 @@ public class AsmMainFrame extends javax.swing.JFrame {
      * 
      * @param jarFile - the jar file to examine
      */
-    private void setupClassList (File jarFile) {
-        if (jarFile == null)
+    private void setupClassList (String jarPath) {
+        JarFile jarFile;
+        try {
+            jarFile = new JarFile(jarPath);
+        } catch (IOException ex) {
+            output.print(DebugType.Error.toString(), ex.getMessage());
             return;
+        }
 
         // init the class list to none
         this.classComboBox.removeAllItems();
-        ZipInputStream zip;
+        clsNodeMap = new HashMap<>();
 
         // read the jar file contents
-        try {
-            zip = new ZipInputStream(jarFile.toURI().toURL().openStream());
-        } catch (IOException ex) {
-            output.print(DebugType.Error.toString(), ex.getMessage());
-            return;
-        }
-        while (true) {
-            // read each entry looking for those that end in ".class"
-            try {
-                ZipEntry entry = zip.getNextEntry();
-                if (entry == null)
-                    break;
-                String fullname = entry.getName();
-                int offset = fullname.lastIndexOf('/');
-                if (offset > 0) {
-                    String path = fullname.substring(0, offset);
-                    String fname = fullname.substring(offset+1);
-                    if (fname.endsWith(".class")) {
-                        this.classComboBox.addItem(fullname);
-                    }
+        int count = 0;
+        Enumeration value = jarFile.entries();
+        while (value.hasMoreElements()) {
+            JarEntry entry = (JarEntry)value.nextElement();
+            String fullname = entry.getName();
+            if (fullname.endsWith(".class")) {
+                // add class entry to class combobox selection
+                this.classComboBox.addItem(fullname);
+                        
+                // add entry to map: use class name to access class node
+                InputStream inStream;
+                try {
+                    inStream = jarFile.getInputStream(entry);
+                    ClassReader clsReader = new ClassReader(inStream);
+                    ClassNode clsNode = new ClassNode();
+                    clsReader.accept(clsNode, 0);
+                    String clsName = clsNode.name;
+                    clsNodeMap.put(clsName, clsNode);
+                    ++count;
+                } catch (IOException ex) {
+                    output.print(DebugType.Error.toString(), ex.getMessage());
+                    return;
                 }
-            } catch (IOException ex) {
-                output.print(DebugType.Error.toString(), ex.getMessage());
-                break;
             }
         }
 
-        // make sure to close the zip file when done
-        try {
-            zip.close();
-        } catch (IOException ex) {
-            output.print(DebugType.Error.toString(), ex.getMessage());
-        }
-                
         // set the 1st entry as the default selection
         if (classComboBox.getItemCount() > 0)
             this.classComboBox.setSelectedIndex(0);
+        
+        output.print(DebugType.Info.toString(), count + " classes found in jar file");
     }
 
     public class ClassPrinter extends ClassVisitor {
@@ -237,12 +251,15 @@ public class AsmMainFrame extends javax.swing.JFrame {
         jLabel1 = new javax.swing.JLabel();
         loadButton = new javax.swing.JButton();
         jarSelectTextField = new javax.swing.JTextField();
+        methodComboBox = new javax.swing.JComboBox();
+        jLabel2 = new javax.swing.JLabel();
         runPanel = new javax.swing.JPanel();
         readButton = new javax.swing.JButton();
-        infoButton = new javax.swing.JButton();
+        printButton = new javax.swing.JButton();
         writeButton = new javax.swing.JButton();
         bytecodeButton = new javax.swing.JButton();
         clearButton = new javax.swing.JButton();
+        showinfoButton = new javax.swing.JButton();
         viewTabbedPane = new javax.swing.JTabbedPane();
         outputScrollPane = new javax.swing.JScrollPane();
         outputTextPane = new javax.swing.JTextPane();
@@ -276,6 +293,18 @@ public class AsmMainFrame extends javax.swing.JFrame {
         jarSelectTextField.setMinimumSize(new java.awt.Dimension(50, 25));
         jarSelectTextField.setPreferredSize(new java.awt.Dimension(530, 25));
 
+        methodComboBox.setToolTipText("<html>\nSpecifies the Class of the method to be tested.\n</html>");
+        methodComboBox.setMaximumSize(new java.awt.Dimension(32767, 24));
+        methodComboBox.setMinimumSize(new java.awt.Dimension(441, 24));
+        methodComboBox.setPreferredSize(new java.awt.Dimension(500, 24));
+        methodComboBox.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                methodComboBoxActionPerformed(evt);
+            }
+        });
+
+        jLabel2.setText("Method");
+
         javax.swing.GroupLayout selectionPanelLayout = new javax.swing.GroupLayout(selectionPanel);
         selectionPanel.setLayout(selectionPanelLayout);
         selectionPanelLayout.setHorizontalGroup(
@@ -284,11 +313,13 @@ public class AsmMainFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addGroup(selectionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addComponent(loadButton)
-                    .addComponent(jLabel1))
+                    .addComponent(jLabel1)
+                    .addComponent(jLabel2))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(selectionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(classComboBox, 0, 954, Short.MAX_VALUE)
-                    .addComponent(jarSelectTextField, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addComponent(jarSelectTextField, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(methodComboBox, 0, 954, Short.MAX_VALUE))
                 .addContainerGap())
         );
         selectionPanelLayout.setVerticalGroup(
@@ -302,6 +333,10 @@ public class AsmMainFrame extends javax.swing.JFrame {
                 .addGroup(selectionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(classComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel1))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(selectionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(methodComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel2))
                 .addGap(33, 33, 33))
         );
 
@@ -314,10 +349,10 @@ public class AsmMainFrame extends javax.swing.JFrame {
             }
         });
 
-        infoButton.setText("Info");
-        infoButton.addActionListener(new java.awt.event.ActionListener() {
+        printButton.setText("Print");
+        printButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
-                infoButtonActionPerformed(evt);
+                printButtonActionPerformed(evt);
             }
         });
 
@@ -342,6 +377,13 @@ public class AsmMainFrame extends javax.swing.JFrame {
             }
         });
 
+        showinfoButton.setText("Show Info");
+        showinfoButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                showinfoButtonActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout runPanelLayout = new javax.swing.GroupLayout(runPanel);
         runPanel.setLayout(runPanelLayout);
         runPanelLayout.setHorizontalGroup(
@@ -349,11 +391,13 @@ public class AsmMainFrame extends javax.swing.JFrame {
             .addGroup(runPanelLayout.createSequentialGroup()
                 .addContainerGap()
                 .addComponent(readButton)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(infoButton)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(showinfoButton)
+                .addGap(7, 7, 7)
+                .addComponent(printButton)
+                .addGap(86, 86, 86)
                 .addComponent(bytecodeButton)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGap(42, 42, 42)
                 .addComponent(writeButton)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addComponent(clearButton)
@@ -365,10 +409,11 @@ public class AsmMainFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addGroup(runPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(readButton)
-                    .addComponent(infoButton)
+                    .addComponent(printButton)
                     .addComponent(writeButton)
                     .addComponent(bytecodeButton)
-                    .addComponent(clearButton))
+                    .addComponent(clearButton)
+                    .addComponent(showinfoButton))
                 .addContainerGap(24, Short.MAX_VALUE))
         );
 
@@ -396,7 +441,7 @@ public class AsmMainFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(runPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(viewTabbedPane, javax.swing.GroupLayout.DEFAULT_SIZE, 383, Short.MAX_VALUE)
+                .addComponent(viewTabbedPane, javax.swing.GroupLayout.DEFAULT_SIZE, 351, Short.MAX_VALUE)
                 .addContainerGap())
         );
 
@@ -413,21 +458,23 @@ public class AsmMainFrame extends javax.swing.JFrame {
         this.classFileChooser.setMultiSelectionEnabled(false);
         int retVal = this.classFileChooser.showOpenDialog(this);
         if (retVal == JFileChooser.APPROVE_OPTION) {
-            jarFile = this.classFileChooser.getSelectedFile();
-            this.jarSelectTextField.setText(jarFile.getAbsolutePath());
+            File jarFile = this.classFileChooser.getSelectedFile();
+            jarpath = jarFile.getAbsolutePath();
+            this.jarSelectTextField.setText(jarpath);
             
             // save in properties
-            properties.setPropertiesItem(PropertiesFile.Type.JarFile, jarFile.getAbsolutePath());
+            properties.setPropertiesItem(PropertiesFile.Type.JarFile, jarpath);
 
             // now load up the class selections and set default selection
-            setupClassList(jarFile);
+            setupClassList(jarpath);
         }
     }//GEN-LAST:event_loadButtonActionPerformed
 
     private void readButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_readButtonActionPerformed
         // make sure we have a valid jar file and class selection
         String clsname = (String)this.classComboBox.getSelectedItem();
-        if (jarFile == null || !jarFile.isFile() || clsname == null || clsname.isEmpty())
+        File jarFile = new File(jarpath);
+        if (!jarFile.isFile() || clsname == null || clsname.isEmpty())
             return;
 
         try {
@@ -435,19 +482,40 @@ public class AsmMainFrame extends javax.swing.JFrame {
             ClassLoader classLoader = new URLClassLoader(new URL[] { jarFile.toURI().toURL() });
             InputStream is = classLoader.getResourceAsStream(clsname);
             classReaderData = new ClassReader(is);
-            if (classReaderData != null)
+            if (classReaderData != null) {
                 output.print(DebugType.Info.toString(), "Class read: " + clsname);
+
+                // get the ClassNode for the specified class from the hash map
+                String basename = clsname;
+                if (basename.endsWith(".class"))
+                    basename = basename.substring(0, basename.length()-".class".length());
+                classNode = clsNodeMap.get(basename);
+                if (classNode != null) {
+                    // now get the methods for the class and place in the method selection combobox
+                    this.methodComboBox.removeAllItems();
+                    for (MethodNode method : (List<MethodNode>)classNode.methods) {
+                        this.methodComboBox.addItem(method.name);
+                    }
+
+                    // set the 1st entry as the default selection
+                    int count = methodComboBox.getItemCount();
+                    if (count > 0)
+                        this.methodComboBox.setSelectedIndex(0);
+        
+                    output.print(DebugType.Info.toString(), count + " methods found in class");
+                }
+            }
         } catch (IOException ex) {
             output.print(DebugType.Error.toString(), ex.getMessage());
         }
     }//GEN-LAST:event_readButtonActionPerformed
 
-    private void infoButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_infoButtonActionPerformed
+    private void printButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_printButtonActionPerformed
         if (classReaderData != null) {
             // print the class info
             classReaderData.accept(new ClassPrinter(), 0);
         }
-    }//GEN-LAST:event_infoButtonActionPerformed
+    }//GEN-LAST:event_printButtonActionPerformed
 
     private void writeButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_writeButtonActionPerformed
         if (classReaderData != null) {
@@ -503,12 +571,61 @@ public class AsmMainFrame extends javax.swing.JFrame {
         // save the selection in the properties file
         String classname = (String)classComboBox.getSelectedItem();
         properties.setPropertiesItem(PropertiesFile.Type.Class, classname);
+        // init the method selection list to none (must press "Read")
+        this.methodComboBox.removeAllItems();
     }//GEN-LAST:event_classComboBoxActionPerformed
 
     private void clearButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_clearButtonActionPerformed
         // clear the prev output
         output.clear();
     }//GEN-LAST:event_clearButtonActionPerformed
+
+    private void showinfoButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_showinfoButtonActionPerformed
+        String clsname = (String)this.classComboBox.getSelectedItem();
+        if (clsname == null || clsname.isEmpty())
+            return;
+        
+        if (classReaderData != null && classNode != null) {
+            printTaggedInfo ("Class", clsname);
+            
+            String methodname = (String)methodComboBox.getSelectedItem();
+            if (methodname == null) {
+                output.print(DebugType.Warn.toString(), "  No method selection made!");
+                return;
+            }
+            
+            // find method selection
+            for (MethodNode method : (List<MethodNode>)classNode.methods) {
+                if (methodname.equals(method.name)) {
+                    printTaggedInfo ("Method", method.name);
+                    printTaggedInfo ("desc", method.desc);
+                    printTaggedInfo ("instructions.size", "" + method.instructions.size());
+                    printTaggedInfo ("maxStack", "" + method.maxStack);
+                    // print the parameters for the method
+                    if (method.parameters == null) {
+                        printTaggedInfo ("parameters", "(null)");
+                    }
+                    else {
+                        output.print(DebugType.Info.toString(), "parameters:");
+                        for (ParameterNode param : (List<ParameterNode>)method.parameters) {
+                            output.print(DebugType.Detail.toString(), "  " + param.name);
+                        }
+                    }
+                    // print the local variables for the method
+                    if (method.localVariables != null) {
+                        output.print(DebugType.Info.toString(), "localVariables: " + method.maxLocals);
+                        for (LocalVariableNode local : (List<LocalVariableNode>)method.localVariables) {
+                            output.print(DebugType.Detail.toString(), "  " + local.name);
+                        }
+                    }
+                }
+            }
+        }
+    }//GEN-LAST:event_showinfoButtonActionPerformed
+
+    private void methodComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_methodComboBoxActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_methodComboBoxActionPerformed
 
     /**
      * @param args the command line arguments
@@ -544,22 +661,27 @@ public class AsmMainFrame extends javax.swing.JFrame {
     private final PropertiesFile properties;
     private final DebugMessage output;
     private ClassReader classReaderData;
-    private File        jarFile;
+    private ClassNode   classNode;
+    private String      jarpath;
+    private Map<String, ClassNode> clsNodeMap;
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton bytecodeButton;
     private javax.swing.JComboBox classComboBox;
     private javax.swing.JFileChooser classFileChooser;
     private javax.swing.JButton clearButton;
-    private javax.swing.JButton infoButton;
     private javax.swing.JLabel jLabel1;
+    private javax.swing.JLabel jLabel2;
     private javax.swing.JTextField jarSelectTextField;
     private javax.swing.JButton loadButton;
+    private javax.swing.JComboBox methodComboBox;
     private javax.swing.JScrollPane outputScrollPane;
     private javax.swing.JTextPane outputTextPane;
+    private javax.swing.JButton printButton;
     private javax.swing.JButton readButton;
     private javax.swing.JPanel runPanel;
     private javax.swing.JPanel selectionPanel;
+    private javax.swing.JButton showinfoButton;
     private javax.swing.JTabbedPane viewTabbedPane;
     private javax.swing.JButton writeButton;
     // End of variables declaration//GEN-END:variables
